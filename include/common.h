@@ -71,4 +71,31 @@
 #define MAX_MALFORMED_PACKETS       3
 #define RATE_LIMIT_PER_SEC          50
 
+/* timestamp validation (replay protection) */
+#define TIMESTAMP_WINDOW_MS         30000  /* 30 seconds */
+
+/* rate limiting configuration */
+#define RATE_LIMIT_BUCKET_SIZE      100    /* max burst size */
+#define RATE_LIMIT_REFILL_MS        1000   /* refill interval */
+
+/* debug configuration */
+#ifdef DEBUG
+#define DEBUG_PROTOCOL              1      /* enable protocol debugging */
+#define DEBUG_TIMING                1      /* enable timing measurements */
+#else
+#define DEBUG_PROTOCOL              0
+#define DEBUG_TIMING                0
+#endif
+
+/* Helper macro for status code categories */
+#define STATUS_IS_OK(s)             ((s) == STATUS_OK)
+#define STATUS_IS_PROTOCOL_ERR(s)   (((s) & 0xF000) == 0x1000)
+#define STATUS_IS_AUTH_ERR(s)       (((s) & 0xF000) == 0x2000)
+#define STATUS_IS_BUSINESS_ERR(s)   (((s) & 0xF000) == 0x3000)
+#define STATUS_IS_RATE_ERR(s)       (((s) & 0xF000) == 0x4000)
+#define STATUS_IS_SERVER_ERR(s)     (((s) & 0xF000) == 0x5000)
+
+/* Get status code name string */
+const char *status_code_name(uint16_t status);
+
 #endif

@@ -5,6 +5,42 @@
 #include <time.h>
 
 /*
+ * Get human-readable name for status code.
+ */
+const char *status_code_name(uint16_t status) {
+    switch (status) {
+        case STATUS_OK:                 return "OK";
+        case STATUS_ERR_BAD_MAGIC:      return "ERR_BAD_MAGIC";
+        case STATUS_ERR_BAD_VERSION:    return "ERR_BAD_VERSION";
+        case STATUS_ERR_BAD_LENGTH:     return "ERR_BAD_LENGTH";
+        case STATUS_ERR_TOO_LARGE:      return "ERR_TOO_LARGE";
+        case STATUS_ERR_BAD_OPCODE:     return "ERR_BAD_OPCODE";
+        case STATUS_ERR_PARSE:          return "ERR_PARSE";
+        case STATUS_ERR_BAD_CRC:        return "ERR_BAD_CRC";
+        case STATUS_ERR_BAD_MAC:        return "ERR_BAD_MAC";
+        case STATUS_ERR_REPLAY:         return "ERR_REPLAY";
+        case STATUS_ERR_BAD_TIMESTAMP:  return "ERR_BAD_TIMESTAMP";
+        case STATUS_ERR_NOT_AUTH:       return "ERR_NOT_AUTH";
+        case STATUS_ERR_AUTH_FAILED:    return "ERR_AUTH_FAILED";
+        case STATUS_ERR_AUTH_LOCKED:    return "ERR_AUTH_LOCKED";
+        case STATUS_ERR_SESSION_INVALID: return "ERR_SESSION_INVALID";
+        case STATUS_ERR_PERMISSION:     return "ERR_PERMISSION";
+        case STATUS_ERR_NO_ACCOUNT:     return "ERR_NO_ACCOUNT";
+        case STATUS_ERR_INSUFFICIENT:   return "ERR_INSUFFICIENT";
+        case STATUS_ERR_AMOUNT_INVALID: return "ERR_AMOUNT_INVALID";
+        case STATUS_ERR_TXN_CONFLICT:   return "ERR_TXN_CONFLICT";
+        case STATUS_ERR_RATE_LIMIT:     return "ERR_RATE_LIMIT";
+        case STATUS_ERR_TOO_MANY_CONN:  return "ERR_TOO_MANY_CONN";
+        case STATUS_ERR_SERVER_BUSY:    return "ERR_SERVER_BUSY";
+        case STATUS_ERR_TIMEOUT:        return "ERR_TIMEOUT";
+        case STATUS_ERR_INTERNAL:       return "ERR_INTERNAL";
+        case STATUS_ERR_IPC_FAIL:       return "ERR_IPC_FAIL";
+        case STATUS_ERR_SHUTTING_DOWN:  return "ERR_SHUTTING_DOWN";
+        default:                        return "UNKNOWN";
+    }
+}
+
+/*
  * Simple CRC32 implementation.
  * Not optimized; clarity is preferred for coursework.
  */

@@ -75,7 +75,7 @@
 #define TIMESTAMP_WINDOW_MS         30000  /* 30 seconds */
 
 /* rate limiting configuration */
-#define RATE_LIMIT_BUCKET_SIZE      100    /* max burst size */
+#define RATE_LIMIT_BUCKET_SIZE      1000   /* max burst size (increased for high-throughput testing) */
 #define RATE_LIMIT_REFILL_MS        1000   /* refill interval */
 
 /* debug configuration */

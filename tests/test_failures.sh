@@ -65,34 +65,34 @@ echo ""
 
 # Test 1: Send garbage data
 echo "Test 1: Sending garbage data..."
-echo "GARBAGE_DATA_NOT_A_VALID_PACKET" | nc -q 1 127.0.0.1 7778 2>/dev/null || true
+echo "GARBAGE_DATA_NOT_A_VALID_PACKET" | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled garbage data without crashing${NC}"
 echo ""
 
 # Test 2: Send truncated packet (only length field)
 echo "Test 2: Sending truncated packet..."
-printf '\x00\x00\x00\x20' | nc -q 1 127.0.0.1 7778 2>/dev/null || true
+printf '\x00\x00\x00\x20' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled truncated packet${NC}"
 echo ""
 
 # Test 3: Send packet with wrong magic
 echo "Test 3: Sending packet with wrong magic..."
 # Length=26, WrongMagic=0xBAD0, Ver=1, Flags=0, Op=0, Seq=0, Timestamp=0, CRC=0
-printf '\x00\x00\x00\x1a\xba\xd0\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | nc -q 1 127.0.0.1 7778 2>/dev/null || true
+printf '\x00\x00\x00\x1a\xba\xd0\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled wrong magic${NC}"
 echo ""
 
 # Test 4: Send packet with oversized length
 echo "Test 4: Sending packet with oversized length claim..."
 # Claim length is 1MB
-printf '\x00\x10\x00\x00' | nc -q 1 127.0.0.1 7778 2>/dev/null || true
+printf '\x00\x10\x00\x00' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled oversized length${NC}"
 echo ""
 
 # Test 5: Multiple bad packets to test disconnect threshold
 echo "Test 5: Sending multiple malformed packets..."
 for i in 1 2 3 4 5; do
-    printf '\x00\x00\x00\x04XXXX' | nc -q 1 127.0.0.1 7778 2>/dev/null || true
+    printf '\x00\x00\x00\x04XXXX' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 done
 echo -e "${GREEN}Server handled multiple malformed packets${NC}"
 echo ""
@@ -100,7 +100,7 @@ echo ""
 # Test 6: Connection flood (many rapid connections)
 echo "Test 6: Connection flood test (20 rapid connections)..."
 for i in $(seq 1 20); do
-    (echo "" | nc -q 0 127.0.0.1 7778 2>/dev/null || true) &
+    (echo "" | timeout 3 nc -w 2 -q 0 127.0.0.1 7778 2>/dev/null || true) &
 done
 wait
 sleep 1

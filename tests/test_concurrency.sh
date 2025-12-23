@@ -43,7 +43,15 @@ cleanup() {
     echo "Cleaning up..."
     if [ ! -z "$SERVER_PID" ]; then
         kill -TERM $SERVER_PID 2>/dev/null || true
-        wait $SERVER_PID 2>/dev/null || true
+        # Wait up to 5 seconds for graceful shutdown
+        for i in 1 2 3 4 5; do
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        # Force kill if still running
+        kill -9 $SERVER_PID 2>/dev/null || true
     fi
     # Remove shared memory if it exists
     rm -f "$SHM_FILE" 2>/dev/null || true

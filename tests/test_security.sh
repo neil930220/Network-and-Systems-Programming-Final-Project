@@ -69,7 +69,15 @@ cleanup() {
     log_info "Cleaning up..."
     if [ ! -z "$SERVER_PID" ]; then
         kill -TERM $SERVER_PID 2>/dev/null || true
-        wait $SERVER_PID 2>/dev/null || true
+        # Wait up to 5 seconds for graceful shutdown
+        for i in 1 2 3 4 5; do
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        # Force kill if still running
+        kill -9 $SERVER_PID 2>/dev/null || true
     fi
     rm -f "$SHM_FILE" 2>/dev/null || true
     log_info "Cleanup complete."
@@ -104,7 +112,7 @@ TESTS_RUN=$((TESTS_RUN + 1))
 # Format: Length(4) + Magic(2) + Ver(1) + Flags(1) + Op(2) + Seq(4) + Timestamp(8) + CRC(4)
 log_verbose "Sending packet with wrong magic number 0xBAD0..."
 printf '\x00\x00\x00\x1a\xba\xd0\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | \
-    nc -q 1 127.0.0.1 7780 2>/dev/null || true
+    timeout 5 nc -w 2 -q 1 127.0.0.1 7780 2>/dev/null || true
 
 # Server should still be running
 if kill -0 $SERVER_PID 2>/dev/null; then
@@ -126,7 +134,7 @@ TESTS_RUN=$((TESTS_RUN + 1))
 # Send packet with correct magic but bad CRC
 log_verbose "Sending packet with invalid CRC..."
 printf '\x00\x00\x00\x1a\xc0\xde\x01\x00\x00\xf0\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\xde\xad\xbe\xef\x00\x00' | \
-    nc -q 1 127.0.0.1 7780 2>/dev/null || true
+    timeout 5 nc -w 2 -q 1 127.0.0.1 7780 2>/dev/null || true
 
 if kill -0 $SERVER_PID 2>/dev/null; then
     log_pass "Server handled bad CRC without crashing"
@@ -146,7 +154,7 @@ TESTS_RUN=$((TESTS_RUN + 1))
 
 # Send packet claiming to be 1MB in size
 log_verbose "Sending packet with oversized length claim (1MB)..."
-printf '\x00\x10\x00\x00' | nc -q 1 127.0.0.1 7780 2>/dev/null || true
+printf '\x00\x10\x00\x00' | timeout 5 nc -w 2 -q 1 127.0.0.1 7780 2>/dev/null || true
 
 if kill -0 $SERVER_PID 2>/dev/null; then
     log_pass "Server handled oversized length without crashing"
@@ -166,7 +174,7 @@ TESTS_RUN=$((TESTS_RUN + 1))
 
 # Send only length field, then close connection
 log_verbose "Sending truncated packet (only length field)..."
-printf '\x00\x00\x00\x20' | nc -q 1 127.0.0.1 7780 2>/dev/null || true
+printf '\x00\x00\x00\x20' | timeout 5 nc -w 2 -q 1 127.0.0.1 7780 2>/dev/null || true
 
 if kill -0 $SERVER_PID 2>/dev/null; then
     log_pass "Server handled truncated packet without crashing"
@@ -187,7 +195,7 @@ TESTS_RUN=$((TESTS_RUN + 1))
 # Send multiple bad packets to trigger disconnect threshold (MAX_MALFORMED_PACKETS=3)
 log_verbose "Sending multiple malformed packets to test disconnect threshold..."
 for i in 1 2 3 4 5; do
-    printf '\x00\x00\x00\x04XXXX' | nc -q 1 127.0.0.1 7780 2>/dev/null || true
+    printf '\x00\x00\x00\x04XXXX' | timeout 5 nc -w 2 -q 1 127.0.0.1 7780 2>/dev/null || true
 done
 
 if kill -0 $SERVER_PID 2>/dev/null; then
@@ -208,10 +216,14 @@ TESTS_RUN=$((TESTS_RUN + 1))
 
 # Open many connections rapidly
 log_verbose "Opening 50 rapid connections..."
+FLOOD_PIDS=""
 for i in $(seq 1 50); do
-    (echo "" | nc -q 0 127.0.0.1 7780 2>/dev/null || true) &
+    (echo "" | timeout 5 nc -w 2 -q 0 127.0.0.1 7780 2>/dev/null || true) &
+    FLOOD_PIDS="$FLOOD_PIDS $!"
 done
-wait
+for pid in $FLOOD_PIDS; do
+    wait $pid 2>/dev/null || true
+done
 sleep 1
 
 if kill -0 $SERVER_PID 2>/dev/null; then
@@ -262,7 +274,7 @@ TESTS_RUN=$((TESTS_RUN + 1))
 log_verbose "Sending empty/minimal requests..."
 for i in 1 2 3; do
     printf '\x00\x00\x00\x1a\xc0\xde\x01\x00\x00\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | \
-        nc -q 1 127.0.0.1 7780 2>/dev/null || true
+        timeout 5 nc -w 2 -q 1 127.0.0.1 7780 2>/dev/null || true
 done
 
 if kill -0 $SERVER_PID 2>/dev/null; then
@@ -282,7 +294,7 @@ echo -e "${YELLOW}Test 9: Random Binary Data${NC}"
 TESTS_RUN=$((TESTS_RUN + 1))
 
 log_verbose "Sending random binary data..."
-dd if=/dev/urandom bs=1024 count=1 2>/dev/null | nc -q 1 127.0.0.1 7780 2>/dev/null || true
+dd if=/dev/urandom bs=1024 count=1 2>/dev/null | timeout 5 nc -w 2 -q 1 127.0.0.1 7780 2>/dev/null || true
 
 if kill -0 $SERVER_PID 2>/dev/null; then
     log_pass "Server handled random binary data"

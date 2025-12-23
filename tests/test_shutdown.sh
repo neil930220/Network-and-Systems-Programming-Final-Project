@@ -112,9 +112,20 @@ sleep 2
 echo "Sending SIGINT during load..."
 kill -INT $SERVER_PID
 
-# Wait for both to finish
-wait $CLIENT_PID 2>/dev/null || true
-wait $SERVER_PID 2>/dev/null || true
+# Wait for both to finish (with timeout)
+for i in 1 2 3 4 5 6 7 8 9 10; do
+    CLIENT_RUNNING=0
+    SERVER_RUNNING=0
+    kill -0 $CLIENT_PID 2>/dev/null && CLIENT_RUNNING=1
+    kill -0 $SERVER_PID 2>/dev/null && SERVER_RUNNING=1
+    if [ $CLIENT_RUNNING -eq 0 ] && [ $SERVER_RUNNING -eq 0 ]; then
+        break
+    fi
+    sleep 1
+done
+# Force kill if still running
+kill -9 $CLIENT_PID 2>/dev/null || true
+kill -9 $SERVER_PID 2>/dev/null || true
 
 # Check cleanup
 sleep 1

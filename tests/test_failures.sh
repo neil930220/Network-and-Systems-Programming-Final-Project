@@ -35,7 +35,15 @@ cleanup() {
     echo "Cleaning up..."
     if [ ! -z "$SERVER_PID" ]; then
         kill -TERM $SERVER_PID 2>/dev/null || true
-        wait $SERVER_PID 2>/dev/null || true
+        # Wait up to 5 seconds for graceful shutdown
+        for i in 1 2 3 4 5; do
+            if ! kill -0 $SERVER_PID 2>/dev/null; then
+                break
+            fi
+            sleep 1
+        done
+        # Force kill if still running
+        kill -9 $SERVER_PID 2>/dev/null || true
     fi
     rm -f "$SHM_FILE" 2>/dev/null || true
     echo "Cleanup complete."
@@ -65,44 +73,48 @@ echo ""
 
 # Test 1: Send garbage data
 echo "Test 1: Sending garbage data..."
-echo "GARBAGE_DATA_NOT_A_VALID_PACKET" | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
+echo "GARBAGE_DATA_NOT_A_VALID_PACKET" | timeout 5 nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled garbage data without crashing${NC}"
 echo ""
 
 # Test 2: Send truncated packet (only length field)
 echo "Test 2: Sending truncated packet..."
-printf '\x00\x00\x00\x20' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
+printf '\x00\x00\x00\x20' | timeout 5 nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled truncated packet${NC}"
 echo ""
 
 # Test 3: Send packet with wrong magic
 echo "Test 3: Sending packet with wrong magic..."
 # Length=26, WrongMagic=0xBAD0, Ver=1, Flags=0, Op=0, Seq=0, Timestamp=0, CRC=0
-printf '\x00\x00\x00\x1a\xba\xd0\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
+printf '\x00\x00\x00\x1a\xba\xd0\x01\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00\x00' | timeout 5 nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled wrong magic${NC}"
 echo ""
 
 # Test 4: Send packet with oversized length
 echo "Test 4: Sending packet with oversized length claim..."
 # Claim length is 1MB
-printf '\x00\x10\x00\x00' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
+printf '\x00\x10\x00\x00' | timeout 5 nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 echo -e "${GREEN}Server handled oversized length${NC}"
 echo ""
 
 # Test 5: Multiple bad packets to test disconnect threshold
 echo "Test 5: Sending multiple malformed packets..."
 for i in 1 2 3 4 5; do
-    printf '\x00\x00\x00\x04XXXX' | nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
+    printf '\x00\x00\x00\x04XXXX' | timeout 5 nc -w 2 -q 1 127.0.0.1 7778 2>/dev/null || true
 done
 echo -e "${GREEN}Server handled multiple malformed packets${NC}"
 echo ""
 
 # Test 6: Connection flood (many rapid connections)
 echo "Test 6: Connection flood test (20 rapid connections)..."
+FLOOD_PIDS=""
 for i in $(seq 1 20); do
     (echo "" | timeout 3 nc -w 2 -q 0 127.0.0.1 7778 2>/dev/null || true) &
+    FLOOD_PIDS="$FLOOD_PIDS $!"
 done
-wait
+for pid in $FLOOD_PIDS; do
+    wait $pid 2>/dev/null || true
+done
 sleep 1
 echo -e "${GREEN}Server survived connection flood${NC}"
 echo ""

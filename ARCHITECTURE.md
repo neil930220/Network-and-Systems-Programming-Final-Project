@@ -13,28 +13,28 @@ flowchart LR
   U2([Load / Tester])
 
   %% ===== Binaries =====
-  subgraph BIN[Build Artifacts / Binaries]
-    VS[vault_server<br/>(server/vault_server.c)]
-    VC[vault_client<br/>(client/vault_client.c)<br/>load generator]
-    VCLI[vault_cli<br/>(client/vault_cli.c)<br/>interactive ncurses TUI]
-    TP[test_protocol<br/>(tests/test_protocol.c)]
+  subgraph BIN[Build Artifacts and Binaries]
+    VS["vault_server - server/vault_server.c"]
+    VC["vault_client - client/vault_client.c (load generator)"]
+    VCLI["vault_cli - client/vault_cli.c (interactive ncurses TUI)"]
+    TP["test_protocol - tests/test_protocol.c"]
   end
 
   %% ===== Libraries (source modules) =====
   subgraph LIB[Shared Libraries (compiled objects)]
-    P[libproto<br/>(protocol encode/decode, CRC32, XOR, timestamp)<br/>libproto/protocol.c]
-    S[libshm<br/>(POSIX shm init/helpers, robust mutex)<br/>libshm/vault_shm.c]
-    L[libutil<br/>(structured logger)<br/>libutil/logger.c]
-    H[include/<br/>common.h, protocol.h, vault_shm.h, logger.h]
+    P["libproto - libproto/protocol.c (encode/decode, CRC32, XOR, timestamp)"]
+    S["libshm - libshm/vault_shm.c (POSIX shm init/helpers, robust mutex)"]
+    L["libutil - libutil/logger.c (structured logger)"]
+    H["include - common.h, protocol.h, vault_shm.h, logger.h"]
   end
 
   %% ===== Server internals / OS =====
-  subgraph OS[OS Facilities (Linux/WSL)]
+  subgraph OS[OS Facilities (Linux or WSL)]
     TCP[(TCP Socket)]
     EP[epoll]
-    SHM[(POSIX Shared Memory<br/>/dev/shm/vault_shm)]
+    SHM[(POSIX Shared Memory: /dev/shm/vault_shm)]
     PM[pthread process-shared mutex]
-    SIG[Signals<br/>SIGINT/SIGTERM]
+    SIG[Signals: SIGINT/SIGTERM]
   end
 
   %% ===== Tests =====
@@ -85,30 +85,30 @@ flowchart LR
 ```mermaid
 flowchart TB
   subgraph MASTER[Master Process]
-    A[Parse args<br/>--port/--workers/--log-level/--log-file]
-    B[Init shared memory<br/>vault_shm_init(create=1)]
-    C[Create listen socket<br/>bind/listen]
+    A["Parse args: port/workers/log-level/log-file"]
+    B["Init shared memory: vault_shm_init(create=1)"]
+    C["Create listen socket: bind/listen"]
     D[fork() workers]
-    E[Signal handler<br/>SIGINT/SIGTERM]
-    F[Set shutdown_flag<br/>in shared memory]
-    G[kill + waitpid workers<br/>cleanup shm + close fd]
+    E["Signal handler: SIGINT/SIGTERM"]
+    F["Set shutdown_flag in shared memory"]
+    G["kill + waitpid workers; cleanup shm; close fd"]
   end
 
   subgraph WORKERS[Worker Processes (N)]
     W1[epoll_wait loop]
     W2[accept() new connections]
-    W3[per-connection session_t<br/>(rate limiter, login state,<br/>read buffer, malformed count)]
+    W3["per-connection session_t (rate limiter, login state, read buffer, malformed count)"]
     W4[read() -> process_read_buffer()]
-    W5[proto_decode + CRC check<br/>(+ optional XOR decrypt)]
-    W6[process_request()<br/>rate-limit + timestamp window + auth]
-    W7[handle_* business ops<br/>(balance/deposit/withdraw/transfer)]
+    W5["proto_decode + CRC check (+ optional XOR decrypt)"]
+    W6["process_request(): rate-limit + timestamp window + auth"]
+    W7["handle_* business ops: balance/deposit/withdraw/transfer"]
     W8[proto_encode -> write() response]
     W9[idle timeout + stats logging]
   end
 
-  SHM[(POSIX shared memory<br/>vault_shm_t)]
-  ACCT[(accounts[ ]<br/>mutex + balance_cents)]
-  CNT[(global counters<br/>requests/errors/active_conn<br/>shutdown_flag/session_id)]
+  SHM[(POSIX shared memory: vault_shm_t)]
+  ACCT[(accounts[ ]: mutex + balance_cents)]
+  CNT[(global counters: requests/errors/active_conn/shutdown_flag/session_id)]
 
   A --> B --> C --> D --> W1
   E --> F --> G
@@ -135,17 +135,17 @@ sequenceDiagram
   participant Shm as Shared Memory (vault_shm_t)
 
   Client->>Proto: proto_encode(frame_t)
-  Proto-->>Client: wire buffer<br/>[Len|Magic|Ver|Flags|Op|Seq|Timestamp|CRC|Body]
+  Proto-->>Client: wire buffer [Len|Magic|Ver|Flags|Op|Seq|Timestamp|CRC|Body]
   Client->>TCP: write(buffer)
-  TCP->>Worker: EPOLLIN<br/>read() into session read_buf
+  TCP->>Worker: EPOLLIN; read() into session read_buf
 
-  Worker->>Worker: process_read_buffer()<br/>(read length, cut full frame)
-  Worker->>Proto: proto_decode(buf)<br/>check Magic/Ver/CRC
+  Worker->>Worker: process_read_buffer() (read length, cut full frame)
+  Worker->>Proto: proto_decode(buf) check Magic/Ver/CRC
   alt FLAG_ENCRYPTED && logged_in
     Worker->>Proto: proto_xor_crypt(body, session_key)
   end
-  Worker->>Worker: process_request()<br/>rate limit + timestamp window + auth
-  Worker->>Shm: lock + read/update<br/>(accounts/counters/session_id)
+  Worker->>Worker: process_request() rate limit + timestamp window + auth
+  Worker->>Shm: lock + read/update (accounts/counters/session_id)
   Worker->>Proto: proto_encode(response)
   Worker->>TCP: write(response buffer)
   TCP-->>Client: response bytes

@@ -123,6 +123,8 @@ Individual integration scripts:
 
 ## Architecture
 
+See `ARCHITECTURE.md` for Mermaid diagrams of the full project architecture.
+
 ### Server model
 
 - **Master process**:

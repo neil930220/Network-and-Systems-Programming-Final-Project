@@ -1,23 +1,5 @@
 ## Bank Vault 專案詳細文件（含 code 位置標註）
 
-本文件針對此 repo 的「Bank Vault」期末專案做**詳細說明**，並在每個重要模組/流程旁標註**對應原始碼位置（檔案 + 行號區間）**，方便你在報告/口試時快速定位。
-
-### 如何閱讀本文件的 code 位置標註
-
-本文會使用 Cursor 友善的「code reference」格式：
-
-```1:4:include/protocol.h
-typedef struct {
-    uint8_t  flags;
-    uint16_t opcode;
-    uint32_t seq;
-} frame_t;
-```
-
-上例表示該段程式碼位於 `include/protocol.h` 的第 1–4 行（示意）。
-
----
-
 ## 專案概觀
 
 此專案實作一個「小型銀行金庫系統」：
@@ -95,6 +77,8 @@ test: all test_protocol
 
 協定在程式內使用 `frame_t` 作為抽象表示（flags/opcode/seq/timestamp/body）：
 
+14:43:include/protocol.h
+
 ```14:43:include/protocol.h
 typedef struct {
     uint8_t  flags;        /* FLAG_ENCRYPTED, FLAG_ERROR, etc. */
@@ -113,6 +97,8 @@ int proto_decode(uint8_t *buf, size_t len, frame_t *out);
 
 wire format 由 `Len` 開頭，總 header size = 26 bytes：
 
+6:16:include/common.h
+
 ```6:16:include/common.h
 #define MAGIC 0xC0DE
 #define PROTO_VERSION 1
@@ -123,6 +109,8 @@ wire format 由 `Len` 開頭，總 header size = 26 bytes：
 ### proto_encode：組封包 + 計算 CRC32
 
 `proto_encode` 負責把 `frame_t` 轉成 wire buffer，CRC 欄位在 offset 22：
+
+115:166:libproto/protocol.c
 
 ```115:166:libproto/protocol.c
 int proto_encode(frame_t *f, uint8_t **out, size_t *out_len) {
@@ -166,6 +154,8 @@ int proto_encode(frame_t *f, uint8_t **out, size_t *out_len) {
 ### proto_decode：驗 magic/version/CRC + parse 出 frame
 
 `proto_decode` 做完整檢查，CRC 驗證時會把 CRC 欄位清 0 再重算：
+
+168:219:libproto/protocol.c
 
 ```168:219:libproto/protocol.c
 int proto_decode(uint8_t *buf, size_t len, frame_t *out) {
@@ -216,6 +206,8 @@ int proto_decode(uint8_t *buf, size_t len, frame_t *out) {
 
 此專案提供 XOR 加解密（非加密學安全），並以 `(username + session_id)` 的 CRC32 做 key：
 
+63:89:libproto/protocol.c
+
 ```63:89:libproto/protocol.c
 void proto_xor_crypt(uint8_t *data, size_t len, uint32_t key) {
     uint8_t key_bytes[4];
@@ -244,6 +236,8 @@ uint32_t proto_derive_key(const char *user, uint32_t session_id) {
 
 timestamp 以毫秒為單位，`proto_validate_timestamp` 限制在 ±30s 內：
 
+94:107:libproto/protocol.c
+
 ```94:107:libproto/protocol.c
 uint64_t proto_timestamp_ms(void) {
     struct timespec ts;
@@ -266,6 +260,8 @@ int proto_validate_timestamp(uint64_t pkt_ts, uint64_t now_ts) {
 
 shared memory 的 layout 在 `vault_shm_t`：
 
+14:31:include/vault_shm.h
+
 ```14:31:include/vault_shm.h
 typedef struct {
     pthread_mutex_t lock;     /* process-shared mutex */
@@ -286,6 +282,8 @@ typedef struct {
 ### 初始化：shm_open + mmap + PTHREAD_PROCESS_SHARED + 初始餘額
 
 server 啟動時呼叫 `vault_shm_init(create=1)` 建立 shared memory，並初始化 robust mutex、帳戶初始餘額 `$1000.00`：
+
+8:58:libshm/vault_shm.c
 
 ```8:58:libshm/vault_shm.c
 vault_shm_t *vault_shm_init(int create) {
@@ -331,6 +329,8 @@ vault_shm_t *vault_shm_init(int create) {
 
 server 對每個連線維護 `session_t`，包含 login/session_key、rate limiter、malformed 計數、read buffer：
 
+42:72:server/vault_server.c
+
 ```42:72:server/vault_server.c
 typedef struct {
     uint64_t tokens;
@@ -361,6 +361,8 @@ typedef struct {
 
 每個連線一個 token bucket：超過速率會回 `STATUS_ERR_RATE_LIMIT`：
 
+94:122:server/vault_server.c
+
 ```94:122:server/vault_server.c
 static void rate_limiter_init(rate_limiter_t *rl) {
     rl->tokens = RATE_LIMIT_BUCKET_SIZE;
@@ -383,6 +385,8 @@ static int rate_limiter_allow(rate_limiter_t *rl) {
 
 速率常數位於 `include/common.h`：
 
+68:80:include/common.h
+
 ```68:80:include/common.h
 #define MAX_CONNECTIONS_PER_WORKER  1024
 #define IDLE_TIMEOUT_SEC            60
@@ -396,6 +400,8 @@ static int rate_limiter_allow(rate_limiter_t *rl) {
 ### Request 處理主流程：統計、rate limit、timestamp、auth、dispatch
 
 所有 op 都會進 `process_request`：更新 counters、做 rate limit、timestamp window、未登入限制，最後 switch dispatch：
+
+493:570:server/vault_server.c
 
 ```493:570:server/vault_server.c
 static int process_request(session_t *sess, frame_t *req, frame_t *resp) {
@@ -452,6 +458,8 @@ static int process_request(session_t *sess, frame_t *req, frame_t *resp) {
 ### 讀取 buffer → 切 frame → proto_decode →（可選）XOR 解密 → 回包
 
 server 在 `process_read_buffer` 做「長度前置」切包與 malformed threshold，`proto_decode` 失敗會回錯誤並累積 malformed count；若封包帶 `FLAG_ENCRYPTED` 且已登入，會用 session key XOR 解密：
+
+573:667:server/vault_server.c
 
 ```573:667:server/vault_server.c
 static int process_read_buffer(session_t *sess, int epfd) {
@@ -510,6 +518,8 @@ static int process_read_buffer(session_t *sess, int epfd) {
 
 worker 使用 `epoll_wait`，accept 後建立 session，讀取後呼叫 `process_read_buffer`；同時週期性檢查 idle 連線並印 stats：
 
+677:825:server/vault_server.c
+
 ```677:825:server/vault_server.c
 static void worker_loop(int listen_fd, int worker_id) {
     int epfd = epoll_create1(0);
@@ -561,6 +571,8 @@ static void worker_loop(int listen_fd, int worker_id) {
 
 main 會初始化 logger、註冊 signal handler、建立 listen socket、fork workers；收到訊號後設定 `shutdown_flag` 並 kill/wait workers，最後 cleanup：
 
+851:987:server/vault_server.c
+
 ```851:987:server/vault_server.c
 int main(int argc, char *argv[]) {
     signal(SIGINT, on_signal);
@@ -605,6 +617,8 @@ int main(int argc, char *argv[]) {
 
 `handle_login` 會從 body 解析 username，產生 `session_id`，derive `session_key`，回包 `status + session_id`：
 
+189:236:server/vault_server.c
+
 ```189:236:server/vault_server.c
 static void handle_login(session_t *sess, frame_t *req, frame_t *resp) {
     if (req->body_len < 2) { build_error_response(resp, req->opcode, req->seq, STATUS_ERR_PARSE); return; }
@@ -637,6 +651,8 @@ static void handle_login(session_t *sess, frame_t *req, frame_t *resp) {
 
 ### Balance：鎖帳戶 mutex，讀取 balance_cents
 
+255:293:server/vault_server.c
+
 ```255:293:server/vault_server.c
 static void handle_balance(session_t *sess, frame_t *req, frame_t *resp) {
     uint32_t acct_id;
@@ -658,6 +674,8 @@ static void handle_balance(session_t *sess, frame_t *req, frame_t *resp) {
 ```
 
 ### Transfer：鎖兩個帳戶（固定順序避免 deadlock）
+
+445:471:server/vault_server.c
 
 ```445:471:server/vault_server.c
 uint32_t first = (from_id < to_id) ? from_id : to_id;
@@ -685,6 +703,8 @@ pthread_mutex_unlock(&g_shm->acct[first].lock);
 ## Client：Load Generator（`vault_client`）
 
 ### 核心 I/O 模型：encode → write → read(length) → read(rest) → decode
+
+79:122:client/vault_client.c
 
 ```79:122:client/vault_client.c
 static int send_recv(int fd, frame_t *req, frame_t *resp) {
@@ -715,6 +735,8 @@ static int send_recv(int fd, frame_t *req, frame_t *resp) {
 
 ### 多執行緒壓測：barrier 同步起跑、隨機帳戶與操作 mix
 
+324:420:client/vault_client.c
+
 ```324:420:client/vault_client.c
 static void *worker(void *arg) {
     int thread_id = (int)(long)arg;
@@ -743,6 +765,8 @@ static void *worker(void *arg) {
 
 ### TUI session 狀態（含 session_id/session_key）
 
+83:93:client/vault_cli.c
+
 ```83:93:client/vault_cli.c
 typedef struct {
     int fd;
@@ -756,6 +780,8 @@ typedef struct {
 ```
 
 ### Login：成功後 derive session_key（對齊 server 的 XOR 鉤子）
+
+547:648:client/vault_cli.c
 
 ```547:648:client/vault_cli.c
 static void cmd_login(void) {
@@ -784,6 +810,8 @@ static void cmd_login(void) {
 
 Logger 提供 level、context（worker/conn/module）與 audit（永遠輸出）：
 
+15:45:include/logger.h
+
 ```15:45:include/logger.h
 #define LEVEL_DEBUG  0
 #define LEVEL_INFO   1
@@ -799,6 +827,8 @@ typedef struct {
 ```
 
 Logger 實作包含 timestamp +（可選）色彩輸出：
+
+160:199:libutil/logger.c
 
 ```160:199:libutil/logger.c
 static void log_output(int level, const log_ctx_t *ctx, const char *msg) {
@@ -828,6 +858,8 @@ static void log_output(int level, const log_ctx_t *ctx, const char *msg) {
 
 `tests/test_protocol.c` 對協定做單元測試（含標準 CRC32 test vector）：
 
+47:56:tests/test_protocol.c
+
 ```47:56:tests/test_protocol.c
 TEST(crc32_basic) {
     uint32_t crc = proto_crc32((uint8_t *)"", 0);
@@ -840,6 +872,8 @@ TEST(crc32_basic) {
 ### Integration：run_all_tests 依序跑 failure/shutdown/concurrency/security
 
 整合測試入口在 `tests/run_all_tests.sh`：
+
+178:191:tests/run_all_tests.sh
 
 ```178:191:tests/run_all_tests.sh
 pkill -f vault_server 2>/dev/null || true
@@ -892,12 +926,5 @@ if (written < 0 && errno != EAGAIN && errno != EWOULDBLOCK) {
 }
 ```
 
----
-
-## 你可以怎麼用這份文件交作業
-
-- **報告/投影片**：直接以本文件章節作骨架（Architecture / Protocol / Security / Concurrency / Tests）。  
-- **Demo/口試**：照「Build → Run server → vault_cli 操作 → vault_client 壓測 → run_all_tests」順序展示。  
-- **追 code**：每個章節下方都有行號標註，能快速跳到對應實作。
 
 
